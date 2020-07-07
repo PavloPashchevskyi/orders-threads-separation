@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
 	"time"
 
 	"github.com/gorilla/mux"
@@ -24,11 +25,6 @@ type spaHandler struct {
 	indexPath  string
 }
 
-type Person struct {
-	name string
-	surname string
-	patronymic string
-}
 
 // ServeHTTP inspects the URL path to locate a file within the static dir
 // on the SPA handler. If a file is found, it will be served. If not, the
@@ -64,9 +60,8 @@ func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
 }
 
-func request() [] map[string]string {
-	reader := strings.NewReader("")
-	request, _ := http.NewRequest("GET", "http://test.loc?data=1", reader)
+func request(method string, address interface{}, reader io.Reader) map[string]string {
+	request, _ := http.NewRequest(method, address.(string), reader)
 	client := &http.Client{}
 	resp, _ := client.Do(request)
 
@@ -74,26 +69,30 @@ func request() [] map[string]string {
 	buf.ReadFrom(resp.Body)
 	defer resp.Body.Close()
 	dataJson := buf.String()
-	var str []map[string]string
+	var str map[string]string
+	fmt.Println(dataJson)
 	json.Unmarshal([]byte(dataJson), &str)
 	return str
 }
 
-func getJSONItem(jsonData []map[string]string, itemNo int) map[string]string  {
-	jsonItem := jsonData[itemNo]
-	var p Person
-	p.surname = jsonItem["surname"]
-	p.name = jsonItem["name"]
-	p.patronymic = jsonItem["patronymic"]
+func getJSONItem(data map[string]interface{}, key int)  {
+	threads := data["threads"]
+	thread := threads.([]interface{})[key]
 
-	fmt.Printf("Surname: " + p.surname + " Name: " + p.name + " Patronymic: " + p.patronymic + "\r\n")
+	threadToProcess := thread.([]interface{})[key]
 
-	return jsonItem
+	requestData := threadToProcess.(map[string]interface{})["account"]
+	requestString := fmt.Sprintf("%v", requestData)
+	ioReader := strings.NewReader(requestString)
+	respMap := request("PUT", data["address"], ioReader)
+	fmt.Println(respMap)
+	//
+	//return respMap
 }
 
-func routine(jsonData []map[string]string) {
-	for i := 0; i < len(jsonData); i++ {
-		go getJSONItem(jsonData, i)
+func routine(data map[string]interface{}) {
+	for i := 0; i < len(data); i++ {
+		go getJSONItem(data, i)
 	}
 }
 
@@ -105,13 +104,26 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 
+	router.HandleFunc("/api/multiorder", func(w http.ResponseWriter, r *http.Request) {
+
+		var multiOrderRequestMap map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&multiOrderRequestMap)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		routine(multiOrderRequestMap)
+	}).Methods("POST")
+
 	router.HandleFunc("/api/items", func(w http.ResponseWriter, r *http.Request) {
-		data := request()
-		routine(data)
-		// an example API handler
-		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
-		json.NewEncoder(w).Encode(data)
-	})
+		//data := request()
+		//fmt.Println(data)
+		//routine(data)
+		//// an example API handler
+		//w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+		//json.NewEncoder(w).Encode(data)
+
+	}).Methods("POST", "PUT")
 
 	spa := spaHandler{staticPath: "build", indexPath: "index.html"}
 	router.PathPrefix("/").Handler(spa)
