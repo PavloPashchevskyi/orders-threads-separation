@@ -75,10 +75,12 @@ func request(method string, address interface{}, reader io.Reader) map[string]st
 	return str
 }
 
-func getJSONItem(data map[string]interface{}, key int)  {
+func getJSONItem(data map[string]interface{}, key int, boolCh chan bool)  {
+	defer close(boolCh)
 	threads := data["threads"]
 	thread := threads.([]interface{})[key]
 
+	boolCh <- false
 	for i := 0; i < len(thread.([]interface{})); i++ {
 		threadToProcess := thread.([]interface{})[i]
 		// get request data
@@ -92,11 +94,31 @@ func getJSONItem(data map[string]interface{}, key int)  {
 			request("PUT", data["address"], strings.NewReader(orderRequestString))
 		}
 	}
+	boolCh <- true
 }
 
 func routine(data map[string]interface{}) {
-	for i := 0; i < len(data["threads"].([]interface{})); i++ {
-		go getJSONItem(data, i)
+	boolCh := make(chan bool)
+	endedThreadsCount := 0
+	threadsCount := len(data["threads"].([]interface{}))
+	for i := 0; i < threadsCount; i++ {
+		go getJSONItem(data, i, boolCh)
+		ended, opened := <- boolCh
+		threadNo := fmt.Sprintf("%v", i + 1)
+		if !opened {
+			fmt.Println("=========================================")
+			fmt.Println("Channel ", threadNo, "is closed!")
+		}
+		if ended {
+			fmt.Println("=========================================")
+			fmt.Println("Channel ", threadNo, "is ENDED!")
+			endedThreadsCount++
+		}
+	}
+	if endedThreadsCount == threadsCount {
+		fmt.Println("All threads have been ended!")
+		requestString := fmt.Sprintf("%v", data["response"])
+		request("PUT", data["address"], strings.NewReader(requestString))
 	}
 }
 
