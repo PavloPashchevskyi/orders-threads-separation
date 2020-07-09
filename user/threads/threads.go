@@ -70,6 +70,7 @@ func request(method string, address interface{}, reader io.Reader) map[string]st
 	dataJson := buf.String()
 	var str map[string]string
 	fmt.Println(dataJson)
+	fmt.Println("=========================================")
 	json.Unmarshal([]byte(dataJson), &str)
 	return str
 }
@@ -80,10 +81,16 @@ func getJSONItem(data map[string]interface{}, key int)  {
 
 	for i := 0; i < len(thread.([]interface{})); i++ {
 		threadToProcess := thread.([]interface{})[i]
-
+		// get request data
 		requestData := threadToProcess.(map[string]interface{})["account"]
 		requestString := fmt.Sprintf("%v", requestData)
-		request("PUT", data["address"], strings.NewReader(requestString))
+		resp := request("PUT", data["address"], strings.NewReader(requestString))
+		// send order request
+		if status, ok := resp["status"]; ok && status == "O" {
+			orderRequestData := threadToProcess.(map[string]interface{})["order"]
+			orderRequestString := fmt.Sprintf("%v", orderRequestData)
+			request("PUT", data["address"], strings.NewReader(orderRequestString))
+		}
 	}
 }
 
