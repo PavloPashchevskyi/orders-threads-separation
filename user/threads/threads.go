@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
 	"time"
 
 	"github.com/gorilla/mux"
@@ -79,19 +78,17 @@ func getJSONItem(data map[string]interface{}, key int)  {
 	threads := data["threads"]
 	thread := threads.([]interface{})[key]
 
-	threadToProcess := thread.([]interface{})[key]
+	for i := 0; i < len(thread.([]interface{})); i++ {
+		threadToProcess := thread.([]interface{})[i]
 
-	requestData := threadToProcess.(map[string]interface{})["account"]
-	requestString := fmt.Sprintf("%v", requestData)
-	ioReader := strings.NewReader(requestString)
-	respMap := request("PUT", data["address"], ioReader)
-	fmt.Println(respMap)
-	//
-	//return respMap
+		requestData := threadToProcess.(map[string]interface{})["account"]
+		requestString := fmt.Sprintf("%v", requestData)
+		request("PUT", data["address"], strings.NewReader(requestString))
+	}
 }
 
 func routine(data map[string]interface{}) {
-	for i := 0; i < len(data); i++ {
+	for i := 0; i < len(data["threads"].([]interface{})); i++ {
 		go getJSONItem(data, i)
 	}
 }
