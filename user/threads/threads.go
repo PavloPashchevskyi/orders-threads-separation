@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -23,7 +24,6 @@ type spaHandler struct {
 	staticPath string
 	indexPath  string
 }
-
 
 // ServeHTTP inspects the URL path to locate a file within the static dir
 // on the SPA handler. If a file is found, it will be served. If not, the
@@ -75,12 +75,10 @@ func request(method string, address interface{}, reader io.Reader) map[string]st
 	return str
 }
 
-func getJSONItem(data map[string]interface{}, key int, boolCh chan bool)  {
-	defer close(boolCh)
+func getJSONItem(data map[string]interface{}, key int, wg * sync.WaitGroup) {
 	threads := data["threads"]
 	thread := threads.([]interface{})[key]
 
-	boolCh <- false
 	for i := 0; i < len(thread.([]interface{})); i++ {
 		threadToProcess := thread.([]interface{})[i]
 		// get request data
@@ -94,32 +92,24 @@ func getJSONItem(data map[string]interface{}, key int, boolCh chan bool)  {
 			request("PUT", data["address"], strings.NewReader(orderRequestString))
 		}
 	}
-	boolCh <- true
+	wg.Done()
 }
 
 func routine(data map[string]interface{}) {
-	boolCh := make(chan bool)
-	endedThreadsCount := 0
+	var wg sync.WaitGroup
 	threadsCount := len(data["threads"].([]interface{}))
+
 	for i := 0; i < threadsCount; i++ {
-		go getJSONItem(data, i, boolCh)
-		ended, opened := <- boolCh
-		threadNo := fmt.Sprintf("%v", i + 1)
-		if !opened {
-			fmt.Println("=========================================")
-			fmt.Println("Channel ", threadNo, "is closed!")
-		}
-		if ended {
-			fmt.Println("=========================================")
-			fmt.Println("Channel ", threadNo, "is ENDED!")
-			endedThreadsCount++
-		}
+		wg.Add(1)
+		go getJSONItem(data, i, &wg)
 	}
-	if endedThreadsCount == threadsCount {
+
+	func() {
+		wg.Wait()
 		fmt.Println("All threads have been ended!")
 		requestString := fmt.Sprintf("%v", data["response"])
 		request("PUT", data["address"], strings.NewReader(requestString))
-	}
+	}()
 }
 
 func main() {
@@ -148,7 +138,6 @@ func main() {
 		//// an example API handler
 		//w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 		//json.NewEncoder(w).Encode(data)
-
 	}).Methods("POST", "PUT")
 
 	spa := spaHandler{staticPath: "build", indexPath: "index.html"}
